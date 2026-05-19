@@ -264,21 +264,46 @@ function clearCompleted() {
   renderAll();
 }
 
+function editTaskField(id, field, value) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+  if (field === 'progress') {
+    task.progress = Math.min(100, Math.max(0, parseInt(value) || 0));
+  } else {
+    task[field] = value;
+  }
+  save(state);
+  // Don't full re-render to avoid losing input focus
+  updateStats();
+}
+
+function undoComplete(id) {
+  const task = state.tasks.find(t => t.id === id);
+  if (!task) return;
+  task.done = false;
+  task.doneDate = null;
+  task.progress = Math.min(99, task.progress);
+  save(state);
+  renderAll();
+}
+
+function updateStats() {
+  const todoTasks = state.tasks.filter(t => !t.done);
+  const doneTasks = state.tasks.filter(t => t.done);
+  const total = state.tasks.length;
+  const highCount = todoTasks.filter(t => t.priority === 'high').length;
+  document.getElementById('statsBar').innerHTML =
+    '<div class="stat"><div class="l">待办事项</div><div class="v">' + todoTasks.length + '</div><div class="s">其中高优先 ' + highCount + ' 项</div></div>' +
+    '<div class="stat"><div class="l">已完成</div><div class="v" style="color:var(--green);">' + doneTasks.length + '</div><div class="s">共 ' + total + ' 项任务</div></div>' +
+    '<div class="stat"><div class="l">完成率</div><div class="v">' + (total > 0 ? Math.round(doneTasks.length / total * 100) : 0) + '%</div><div class="s">整体进展</div></div>' +
+    '<div class="stat"><div class="l">本周新增</div><div class="v">' + state.tasks.filter(t => t.createdAt.slice(0,10) >= new Date(Date.now()-7*86400000).toISOString().slice(0,10)).length + '</div><div class="s">近7天</div></div>';
+  document.getElementById('todoCount').textContent = todoTasks.length + ' 项';
+}
+
 function renderAll() {
   const todoTasks = state.tasks.filter(t => !t.done);
   const doneTasks = state.tasks.filter(t => t.done);
-
-  const total = state.tasks.length;
-  const completed = doneTasks.length;
-  const highCount = todoTasks.filter(t => t.priority === 'high').length;
-
-  document.getElementById('statsBar').innerHTML =
-    '<div class="stat"><div class="l">待办事项</div><div class="v">' + todoTasks.length + '</div><div class="s">其中高优先 ' + highCount + ' 项</div></div>' +
-    '<div class="stat"><div class="l">已完成</div><div class="v" style="color:var(--green);">' + completed + '</div><div class="s">共 ' + total + ' 项任务</div></div>' +
-    '<div class="stat"><div class="l">完成率</div><div class="v">' + (total > 0 ? Math.round(completed / total * 100) : 0) + '%</div><div class="s">整体进展</div></div>' +
-    '<div class="stat"><div class="l">本周新增</div><div class="v">' + state.tasks.filter(t => t.createdAt.slice(0,10) >= new Date(Date.now()-7*86400000).toISOString().slice(0,10)).length + '</div><div class="s">近7天</div></div>';
-
-  document.getElementById('todoCount').textContent = todoTasks.length + ' 项';
+  updateStats();
 
   let todoHTML = '<table><thead><tr>' +
     '<th>布置日期</th><th>工作事项</th><th>合作人</th><th>优先级</th>' +
@@ -294,14 +319,17 @@ function renderAll() {
       return a.date.localeCompare(b.date);
     });
     todoTasks.forEach(t => {
-      const priLabel = { high:'高', mid:'中', low:'低' };
       todoHTML += '<tr>' +
-        '<td style="white-space:nowrap;font-size:13px;">' + t.date + '</td>' +
-        '<td><strong>' + t.task + '</strong></td>' +
-        '<td>' + t.partner + '</td>' +
-        '<td><span class="pri-tag pri-' + t.priority + '">' + priLabel[t.priority] + '</span></td>' +
-        '<td style="white-space:nowrap;"><input type="number" class="progress-inp" value="' + t.progress + '" min="0" max="100" onchange="updateProgress(' + t.id + ',this.value)"> %</td>' +
-        '<td class="desc-cell" title="' + t.desc + '">' + t.desc + '</td>' +
+        '<td><input type="date" value="' + t.date + '" onchange="editTaskField(' + t.id + ',\'date\',this.value)" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:4px;width:120px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td><input type="text" value="' + t.task.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'task\',this.value)" style="font-weight:600;font-size:14px;background:transparent;border:1px solid transparent;color:var(--text-bright);padding:4px 6px;border-radius:4px;min-width:160px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td><input type="text" value="' + t.partner.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'partner\',this.value)" style="font-size:13px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:4px;width:80px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td><select onchange="editTaskField(' + t.id + ',\'priority\',this.value);renderAll()" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px;border-radius:4px;cursor:pointer;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'">' +
+          '<option value="high"' + (t.priority==='high'?' selected':'') + '>高</option>' +
+          '<option value="mid"' + (t.priority==='mid'?' selected':'') + '>中</option>' +
+          '<option value="low"' + (t.priority==='low'?' selected':'') + '>低</option>' +
+        '</select></td>' +
+        '<td style="white-space:nowrap;"><input type="number" class="progress-inp" value="' + t.progress + '" min="0" max="100" onchange="editTaskField(' + t.id + ',\'progress\',this.value)"> %</td>' +
+        '<td><input type="text" value="' + t.desc.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'desc\',this.value)" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text2);padding:4px 6px;border-radius:4px;min-width:120px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'" placeholder="描述..."></td>' +
         '<td><input type="checkbox" onchange="toggleDone(' + t.id + ')" title="标记完成"></td>' +
         '<td><button class="btn-sm" style="border-color:transparent;" onclick="deleteTask(' + t.id + ')" title="删除">✕</button></td>' +
         '</tr>';
@@ -311,22 +339,26 @@ function renderAll() {
   document.getElementById('todoBody').innerHTML = todoHTML;
 
   let doneHTML = '<table><thead><tr>' +
-    '<th>布置日期</th><th>完成日期</th><th>工作事项</th><th>合作人</th><th>优先级</th><th>描述</th><th style="width:30px;"></th>' +
+    '<th>布置日期</th><th>完成日期</th><th>工作事项</th><th>合作人</th><th>优先级</th><th>描述</th><th style="width:30px;"></th><th style="width:30px;"></th>' +
     '</tr></thead><tbody>';
 
   if (doneTasks.length === 0) {
-    doneHTML += '<tr class="empty-row"><td colspan="7">暂无已完成事项</td></tr>';
+    doneHTML += '<tr class="empty-row"><td colspan="8">暂无已完成事项</td></tr>';
   } else {
     doneTasks.sort((a, b) => (b.doneDate || '').localeCompare(a.doneDate || ''));
     doneTasks.forEach(t => {
-      const priLabel = { high:'高', mid:'中', low:'低' };
-      doneHTML += '<tr style="opacity:0.65;">' +
-        '<td style="white-space:nowrap;font-size:13px;">' + t.date + '</td>' +
-        '<td style="white-space:nowrap;font-size:13px;color:var(--green);">' + (t.doneDate || '—') + '</td>' +
-        '<td><strong style="text-decoration:line-through;">' + t.task + '</strong></td>' +
-        '<td>' + t.partner + '</td>' +
-        '<td><span class="pri-tag pri-' + t.priority + '">' + priLabel[t.priority] + '</span></td>' +
-        '<td class="desc-cell" title="' + t.desc + '">' + t.desc + '</td>' +
+      doneHTML += '<tr style="opacity:0.7;">' +
+        '<td><input type="date" value="' + t.date + '" onchange="editTaskField(' + t.id + ',\'date\',this.value)" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:4px;width:120px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td style="font-size:12px;color:var(--green);white-space:nowrap;">' + (t.doneDate || '—') + '</td>' +
+        '<td><input type="text" value="' + t.task.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'task\',this.value)" style="text-decoration:line-through;font-weight:600;font-size:14px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:4px;min-width:160px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td><input type="text" value="' + t.partner.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'partner\',this.value)" style="font-size:13px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px 6px;border-radius:4px;width:80px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'"></td>' +
+        '<td><select onchange="editTaskField(' + t.id + ',\'priority\',this.value);renderAll()" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text);padding:4px;border-radius:4px;cursor:pointer;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'">' +
+          '<option value="high"' + (t.priority==='high'?' selected':'') + '>高</option>' +
+          '<option value="mid"' + (t.priority==='mid'?' selected':'') + '>中</option>' +
+          '<option value="low"' + (t.priority==='low'?' selected':'') + '>低</option>' +
+        '</select></td>' +
+        '<td><input type="text" value="' + t.desc.replace(/"/g,'&quot;') + '" onchange="editTaskField(' + t.id + ',\'desc\',this.value)" style="font-size:12px;background:transparent;border:1px solid transparent;color:var(--text2);padding:4px 6px;border-radius:4px;min-width:120px;" onfocus="this.style.borderColor=\'var(--border)\'" onblur="this.style.borderColor=\'transparent\'" placeholder="描述..."></td>' +
+        '<td><button class="btn-sm" onclick="undoComplete(' + t.id + ')" title="撤销到待办" style="border-color:var(--cta);color:var(--cta);">↩</button></td>' +
         '<td><button class="btn-sm" style="border-color:transparent;" onclick="deleteTask(' + t.id + ')" title="删除">✕</button></td>' +
         '</tr>';
     });
